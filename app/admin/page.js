@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase-browser';
-import { nanoid } from 'nanoid';
 
 export default function AdminPage() {
   const sb = createClient();
@@ -10,8 +9,24 @@ export default function AdminPage() {
   const [apps, setApps] = useState([]);
   const [conversions, setConversions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [newApp, setNewApp] = useState({ name: '', website_url: '', description: '' });
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => { load(); }, []);
+
+  // POST helper — all admin writes go through server routes that use the
+  // service-role key (RLS blocks these tables from the browser client) and
+  // re-check that the caller is an admin.
+  async function post(url, body) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, admin_user_id: user?.id }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) throw new Error(json.error || `Request failed (${res.status})`);
+    return json;
+  }
 
   async function load() {
     const { data: { user: u } } = await sb.auth.getUser();
@@ -32,29 +47,30 @@ export default function AdminPage() {
     setLoading(false);
   }
 
-  async function approveApp(req) {
-    const slug = req.app_name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const apiKey = 'pk_' + nanoid(24);
-    const webhookSecret = 'whsec_' + nanoid(32);
+  async function addApp(e) {
+    e.preventDefault();
+    if (!newApp.name || !newApp.website_url) return;
+    setCreating(true);
+    try {
+      const { app } = await post('/api/admin/apps', newApp);
+      setNewApp({ name: '', website_url: '', description: '' });
+      alert(`App "${app.name}" added.\n\nAPI Key: ${app.api_key}\nWebhook Secret: ${app.webhook_secret}\n\nSend the API key to the partner with the integration guide.`);
+      load();
+    } catch (err) { alert(err.message); }
+    finally { setCreating(false); }
+  }
 
-    const { error } = await sb.from('partner_apps').insert({
-      name: req.app_name,
-      slug,
-      website_url: req.website_url,
-      status: 'approved',
-      api_key: apiKey,
-      webhook_secret: webhookSecret,
-      requested_by_email: req.contact_email,
-    });
-    if (error) { alert(error.message); return; }
-    await sb.from('app_requests').update({ status: 'approved' }).eq('id', req.id);
-    alert(`Approved! API Key: ${apiKey}\nSend this to ${req.contact_email} along with integration docs.`);
-    load();
+  async function approveRequest(req) {
+    try {
+      const { app } = await post('/api/admin/requests', { request_id: req.id, action: 'approve' });
+      alert(`Approved! API Key: ${app.api_key}\nSend this to ${req.contact_email} along with integration docs.`);
+      load();
+    } catch (err) { alert(err.message); }
   }
 
   async function rejectRequest(id) {
-    await sb.from('app_requests').update({ status: 'rejected' }).eq('id', id);
-    load();
+    try { await post('/api/admin/requests', { request_id: id, action: 'reject' }); load(); }
+    catch (err) { alert(err.message); }
   }
 
   async function addTier(appId) {
@@ -62,18 +78,20 @@ export default function AdminPage() {
     if (!tierName) return;
     const price = parseFloat(prompt('User price ($/mo):') || '0');
     const payout = parseFloat(prompt('Affiliate payout per conversion ($):') || '0');
-    await sb.from('app_tiers').insert({
-      app_id: appId,
-      tier_name: tierName,
-      tier_price_cents: Math.round(price * 100),
-      payout_cents: Math.round(payout * 100),
-    });
-    load();
+    try {
+      await post('/api/admin/tiers', {
+        app_id: appId,
+        tier_name: tierName,
+        tier_price_cents: Math.round(price * 100),
+        payout_cents: Math.round(payout * 100),
+      });
+      load();
+    } catch (err) { alert(err.message); }
   }
 
   async function approveConversion(id) {
-    await sb.from('referral_conversions').update({ status: 'approved' }).eq('id', id);
-    load();
+    try { await post('/api/admin/conversions', { conversion_id: id }); load(); }
+    catch (err) { alert(err.message); }
   }
 
   if (loading) return <div style={{ padding: 40, color: '#999' }}>Loading...</div>;
@@ -81,6 +99,38 @@ export default function AdminPage() {
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 20px', fontFamily: 'system-ui' }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 32 }}>Admin Panel</h1>
+
+      {/* Add a partner app directly */}
+      <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Add App to Market</h2>
+      <form onSubmit={addApp} style={{ border: '1px solid #e5e5e5', borderRadius: 8, padding: 14, marginBottom: 32, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <input
+            placeholder="App name *"
+            value={newApp.name}
+            onChange={e => setNewApp({ ...newApp, name: e.target.value })}
+            required
+            style={{ flex: '1 1 220px', padding: 10, border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }}
+          />
+          <input
+            placeholder="Website URL *"
+            type="url"
+            value={newApp.website_url}
+            onChange={e => setNewApp({ ...newApp, website_url: e.target.value })}
+            required
+            style={{ flex: '1 1 220px', padding: 10, border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }}
+          />
+        </div>
+        <textarea
+          placeholder="Description (optional)"
+          value={newApp.description}
+          onChange={e => setNewApp({ ...newApp, description: e.target.value })}
+          rows={2}
+          style={{ width: '100%', padding: 10, border: '1px solid #ddd', borderRadius: 6, fontFamily: 'inherit', fontSize: 13 }}
+        />
+        <button type="submit" disabled={creating} style={{ alignSelf: 'flex-start', background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.6 : 1 }}>
+          {creating ? 'Adding…' : 'Add App'}
+        </button>
+      </form>
 
       {/* Pending app requests */}
       <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Pending App Requests ({requests.length})</h2>
@@ -91,7 +141,7 @@ export default function AdminPage() {
             <div style={{ fontSize: 12, color: '#666' }}>{r.website_url} — {r.contact_email}</div>
             <p style={{ fontSize: 12, color: '#999', marginTop: 6 }}>{r.description}</p>
             <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-              <button onClick={() => approveApp(r)} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>Approve</button>
+              <button onClick={() => approveRequest(r)} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>Approve</button>
               <button onClick={() => rejectRequest(r.id)} style={{ background: '#fff', color: '#dc2626', border: '1px solid #dc2626', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>Reject</button>
             </div>
           </div>
@@ -118,6 +168,7 @@ export default function AdminPage() {
             </div>
           </div>
         ))}
+        {!apps.length && <div style={{ color: '#999', fontSize: 13 }}>No apps yet. Add one above.</div>}
       </div>
 
       {/* Pending conversions to approve */}
