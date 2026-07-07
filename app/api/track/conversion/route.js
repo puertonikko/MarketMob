@@ -5,17 +5,21 @@ import { createServiceClient } from '@/lib/supabase-server';
 //
 // Body: {
 //   api_key: string,
-//   promo_code: string,
-//   external_user_id: string,   // must match what was sent in /api/track/signup
+//   external_user_id: string,   // the app's user id — must match /api/track/signup
 //   tier_name: string,          // matches app_tiers.tier_name for this app
-//   amount_paid_cents: number   // optional, for record-keeping
+//   promo_code?: string,        // optional; recovered from the signup if absent
+//   amount_paid_cents?: number  // optional, for record-keeping
 // }
+//
+// Attribution is anchored to external_user_id, not the browser: if promo_code
+// is missing or unknown (e.g. the buyer paid on a different device than they
+// signed up on), we recover it from the user's original signup record.
 export async function POST(req) {
   try {
     const body = await req.json();
     const { api_key, promo_code, external_user_id, tier_name, amount_paid_cents } = body;
 
-    if (!api_key || !promo_code || !external_user_id || !tier_name) {
+    if (!api_key || !external_user_id || !tier_name) {
       return Response.json({ ok: false, error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -30,14 +34,32 @@ export async function POST(req) {
     if (!app) return Response.json({ ok: false, error: 'Invalid API key' }, { status: 401 });
     if (app.status !== 'approved') return Response.json({ ok: false, error: 'App not approved' }, { status: 403 });
 
-    const { data: promo } = await sb
-      .from('promo_codes')
-      .select('id')
+    // The original signup: used to link the funnel AND to recover the promo
+    // code if the app didn't send one this time.
+    const { data: signup } = await sb
+      .from('referral_signups')
+      .select('id, promo_code_id')
       .eq('app_id', app.id)
-      .eq('code', promo_code)
+      .eq('external_user_id', external_user_id)
       .maybeSingle();
 
-    if (!promo) return Response.json({ ok: false, error: 'Unknown promo code' }, { status: 404 });
+    // Resolve the promo code: prefer what the app sent, else fall back to the
+    // signup's code.
+    let promoId = null;
+    if (promo_code) {
+      const { data: promo } = await sb
+        .from('promo_codes')
+        .select('id')
+        .eq('app_id', app.id)
+        .eq('code', promo_code)
+        .maybeSingle();
+      promoId = promo?.id || null;
+    }
+    if (!promoId && signup?.promo_code_id) promoId = signup.promo_code_id;
+
+    if (!promoId) {
+      return Response.json({ ok: false, error: 'No promo code and no referred signup to attribute to' }, { status: 404 });
+    }
 
     // Find payout rate for this tier
     const { data: tier } = await sb
@@ -51,17 +73,9 @@ export async function POST(req) {
       return Response.json({ ok: false, error: 'Unknown or inactive tier' }, { status: 404 });
     }
 
-    // Link to the original signup if it exists (for funnel tracking)
-    const { data: signup } = await sb
-      .from('referral_signups')
-      .select('id')
-      .eq('app_id', app.id)
-      .eq('external_user_id', external_user_id)
-      .maybeSingle();
-
     const { error } = await sb.from('referral_conversions').insert({
       referral_signup_id: signup?.id || null,
-      promo_code_id: promo.id,
+      promo_code_id: promoId,
       app_id: app.id,
       app_tier_id: tier.id,
       external_user_id,
