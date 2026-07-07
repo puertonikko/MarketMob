@@ -238,6 +238,35 @@ h1,h2,h3,h4 { text-wrap:balance; }
 .auth-brand { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:6px; }
 .auth-card h1 { text-align:center; font-size:20px; font-weight:750; letter-spacing:-.02em; margin:14px 0 22px; }
 
+/* Split sign-in: marketing pitch beside the form */
+.auth-split { min-height:100vh; display:grid; grid-template-columns:1.05fr .95fr; }
+@media (max-width:860px){ .auth-split{ grid-template-columns:1fr; } }
+.auth-pitch {
+  position:relative; overflow:hidden; color:#F3FBF7;
+  background:
+    radial-gradient(120% 90% at 14% 6%, color-mix(in srgb, var(--accent) 66%, #0a3f2d) 0%, transparent 60%),
+    linear-gradient(150deg, #0a3f2d, #06231a 72%);
+  padding:clamp(32px,5vw,64px); display:flex; flex-direction:column; justify-content:center; gap:26px;
+}
+@media (max-width:860px){ .auth-pitch{ padding:36px 26px; gap:20px; } }
+.auth-pitch .brand-name { color:#fff; }
+.auth-pitch .brand-name span { color:#7bf0c2; }
+.auth-pitch .brand-mark { box-shadow:0 4px 18px rgba(0,0,0,.35); }
+.pitch-h { font-size:clamp(26px,3.4vw,40px); font-weight:820; letter-spacing:-.03em; line-height:1.08; margin:0; max-width:15ch; }
+.pitch-h em { font-style:normal; color:#7bf0c2; }
+.pitch-sub { color:#c3e8d8; font-size:15px; line-height:1.6; max-width:44ch; margin:0; }
+.pitch-list { display:flex; flex-direction:column; gap:14px; margin:0; padding:0; list-style:none; }
+.pitch-list li { display:flex; gap:12px; align-items:flex-start; }
+.pitch-ic { width:28px; height:28px; border-radius:8px; background:rgba(255,255,255,.12); display:grid; place-items:center; flex-shrink:0; }
+.pitch-ic svg { width:15px; height:15px; stroke:#7bf0c2; fill:none; stroke-width:2.4; }
+.pitch-list b { display:block; font-size:14px; font-weight:650; color:#fff; }
+.pitch-list small { color:#a6d4c1; font-size:12.5px; line-height:1.45; }
+.pitch-foot { display:flex; gap:22px; flex-wrap:wrap; padding-top:6px; border-top:1px solid rgba(255,255,255,.12); }
+.pitch-stat .n { font-family:var(--font-mono); font-size:22px; font-weight:750; color:#fff; }
+.pitch-stat small { color:#a6d4c1; font-size:11px; letter-spacing:.05em; text-transform:uppercase; }
+.auth-panel { display:grid; place-items:center; padding:24px; background:var(--bg); }
+.auth-panel .auth-card { box-shadow:none; border:1px solid var(--line); }
+
 /* ── Landing ── */
 .land { max-width:1080px; margin:0 auto; padding:0 24px; }
 .land-nav { display:flex; align-items:center; justify-content:space-between; padding:22px 0; }
