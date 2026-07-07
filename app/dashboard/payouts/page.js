@@ -1,6 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase-browser';
+import AppShell from '@/components/AppShell';
+
+const money = (cents) => `$${((cents || 0) / 100).toFixed(2)}`;
 
 export default function PayoutsPage() {
   const sb = createClient();
@@ -26,8 +29,7 @@ export default function PayoutsPage() {
 
   async function connectAccount() {
     const r = await fetch('/api/stripe/connect-onboard', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: user.id, email: user.email }),
     });
     const data = await r.json();
@@ -35,44 +37,60 @@ export default function PayoutsPage() {
     else alert('Error: ' + data.error);
   }
 
-  if (loading) return <div style={{ padding: 40, color: '#999' }}>Loading...</div>;
+  const isAdmin = profile?.role === 'admin';
+  const connected = !!profile?.stripe_connect_account_id;
+
+  if (loading) return <AppShell active="payouts"><div className="loading">Loading…</div></AppShell>;
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 20px', fontFamily: 'system-ui' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24 }}>Payouts</h1>
+    <AppShell active="payouts" email={user?.email} isAdmin={isAdmin}>
+      <div className="topbar"><div className="greet"><h1>Payouts</h1><p>Connect a bank account and track what you've been paid.</p></div></div>
 
-      <div style={{ border: '1px solid #e5e5e5', borderRadius: 10, padding: 20, marginBottom: 32 }}>
-        {profile?.stripe_connect_account_id ? (
-          <div>
-            <div style={{ color: '#16a34a', fontWeight: 700, marginBottom: 8 }}>✓ Payout account connected</div>
-            <button onClick={connectAccount} style={{ fontSize: 12, color: '#666', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}>
-              Update account details
-            </button>
-          </div>
-        ) : (
-          <div>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Connect a payout account</div>
-            <p style={{ fontSize: 13, color: '#666', marginBottom: 14 }}>You need to connect a bank account via Stripe before we can pay you. Takes about 2 minutes.</p>
-            <button onClick={connectAccount} style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '10px 18px', fontSize: 13, cursor: 'pointer' }}>
-              Connect with Stripe
-            </button>
-          </div>
-        )}
-      </div>
-
-      <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Payout History</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {payouts.map(p => (
-          <div key={p.id} style={{ border: '1px solid #e5e5e5', borderRadius: 8, padding: 14, display: 'flex', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontWeight: 700 }}>${(p.amount_cents / 100).toFixed(2)}</div>
-              <div style={{ fontSize: 12, color: '#999' }}>{new Date(p.created_at).toLocaleDateString()}</div>
+      <section className="card" style={{ marginBottom: 26 }}>
+        <div className="card-b">
+          {connected ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: 'var(--accent)' }}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M20 6 9 17l-5-5" /></svg>
+                  Payout account connected
+                </div>
+                <p className="muted" style={{ fontSize: 13, margin: '6px 0 0' }}>You're all set to receive payouts via Stripe.</p>
+              </div>
+              <button onClick={connectAccount} className="btn btn-ghost btn-sm">Update details</button>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: p.status === 'paid' ? '#16a34a' : '#ea580c', textTransform: 'uppercase' }}>{p.status}</span>
+          ) : (
+            <div>
+              <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700 }}>Connect a payout account</h3>
+              <p className="muted" style={{ fontSize: 13.5, margin: '0 0 16px', maxWidth: 460 }}>
+                Connect a bank account through Stripe so we can pay out your earnings. It takes about two minutes and is required before your first withdrawal.
+              </p>
+              <button onClick={connectAccount} className="btn btn-primary">
+                <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>
+                Connect with Stripe
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div className="sec-title"><h2>Payout history</h2></div>
+      <div className="stack">
+        {payouts.map(p => (
+          <div className="card" key={p.id}>
+            <div className="card-b" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px' }}>
+              <div>
+                <div className="num" style={{ fontWeight: 750, fontSize: 17 }}>{money(p.amount_cents)}</div>
+                <div className="muted" style={{ fontSize: 12 }}>{new Date(p.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+              </div>
+              <span className={`pill ${p.status === 'paid' ? 'pill-good' : p.status === 'failed' ? 'pill-warn' : 'pill-info'}`}>{p.status}</span>
+            </div>
           </div>
         ))}
-        {!payouts.length && <div style={{ color: '#999', fontSize: 13 }}>No payouts yet.</div>}
+        {!payouts.length && (
+          <section className="card"><div className="card-b"><div className="empty">No payouts yet. Earnings appear here once conversions are approved and paid out.</div></div></section>
+        )}
       </div>
-    </div>
+    </AppShell>
   );
 }

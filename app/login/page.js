@@ -20,31 +20,42 @@ export default function LoginPage() {
     } else {
       const { error } = await sb.auth.signUp({ email, password });
       if (error) { setError(error.message); return; }
-      // Profile row is created automatically by the on_auth_user_created
-      // trigger in the database — no client-side insert needed.
+      // Profile row is created automatically by the on_auth_user_created trigger.
       setInfo('Check your email to confirm your account, then sign in.');
     }
   }
 
   return (
-    <div style={{ maxWidth: 360, margin: '100px auto', fontFamily: 'system-ui', padding: '0 20px' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24, textAlign: 'center' }}>
-        {mode === 'login' ? 'Sign In' : 'Create Affiliate Account'}
-      </h1>
-      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required
-          style={{ padding: 12, border: '1px solid #ddd', borderRadius: 6, fontSize: 14 }} />
-        <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required
-          style={{ padding: 12, border: '1px solid #ddd', borderRadius: 6, fontSize: 14 }} />
-        {error && <div style={{ color: '#dc2626', fontSize: 12 }}>{error}</div>}
-        {info && <div style={{ color: '#16a34a', fontSize: 12 }}>{info}</div>}
-        <button type="submit" style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-          {mode === 'login' ? 'Sign In' : 'Create Account'}
+    <div className="centered">
+      <div className="auth-card">
+        <a className="auth-brand" href="/">
+          <div className="brand-mark">M</div>
+          <div className="brand-name">Market<span>Mob</span></div>
+        </a>
+        <h1>{mode === 'login' ? 'Welcome back' : 'Create your marketer account'}</h1>
+        <form className="form" onSubmit={submit}>
+          <div className="field">
+            <label className="label">Email</label>
+            <input className="input" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
+          </div>
+          <div className="field">
+            <label className="label">Password</label>
+            <input className="input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
+          </div>
+          {error && <div className="msg-err">{error}</div>}
+          {info && <div className="msg-ok">{info}</div>}
+          <button type="submit" className="btn btn-primary btn-block">
+            {mode === 'login' ? 'Sign in' : 'Create account'}
+          </button>
+        </form>
+        <button
+          onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfo(''); }}
+          className="linklike"
+          style={{ marginTop: 16, width: '100%', textAlign: 'center', color: 'var(--ink-2)' }}
+        >
+          {mode === 'login' ? 'New here? Create a marketer account' : 'Already have an account? Sign in'}
         </button>
-      </form>
-      <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} style={{ marginTop: 14, width: '100%', background: 'none', border: 'none', color: '#666', fontSize: 13, textDecoration: 'underline', cursor: 'pointer' }}>
-        {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
-      </button>
+      </div>
     </div>
   );
 }

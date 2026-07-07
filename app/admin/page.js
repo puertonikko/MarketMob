@@ -1,6 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase-browser';
+import AppShell from '@/components/AppShell';
+
+const money = (cents) => `$${((cents || 0) / 100).toFixed(2)}`;
 
 export default function AdminPage() {
   const sb = createClient();
@@ -14,9 +17,6 @@ export default function AdminPage() {
 
   useEffect(() => { load(); }, []);
 
-  // POST helper — all admin writes go through server routes that use the
-  // service-role key (RLS blocks these tables from the browser client) and
-  // re-check that the caller is an admin.
   async function post(url, body) {
     const res = await fetch(url, {
       method: 'POST',
@@ -37,13 +37,10 @@ export default function AdminPage() {
 
     const { data: r } = await sb.from('app_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
     setRequests(r || []);
-
     const { data: a } = await sb.from('partner_apps').select('*, app_tiers(*)').order('created_at', { ascending: false });
     setApps(a || []);
-
     const { data: c } = await sb.from('referral_conversions').select('*, partner_apps(name), promo_codes(code, profiles(email))').eq('status', 'pending').order('created_at', { ascending: false });
     setConversions(c || []);
-
     setLoading(false);
   }
 
@@ -67,124 +64,108 @@ export default function AdminPage() {
       load();
     } catch (err) { alert(err.message); }
   }
-
   async function rejectRequest(id) {
     try { await post('/api/admin/requests', { request_id: id, action: 'reject' }); load(); }
     catch (err) { alert(err.message); }
   }
-
   async function addTier(appId) {
     const tierName = prompt('Tier name (e.g. Pro):');
     if (!tierName) return;
     const price = parseFloat(prompt('User price ($/mo):') || '0');
-    const payout = parseFloat(prompt('Affiliate payout per conversion ($):') || '0');
+    const payout = parseFloat(prompt('Marketer payout per conversion ($):') || '0');
     try {
-      await post('/api/admin/tiers', {
-        app_id: appId,
-        tier_name: tierName,
-        tier_price_cents: Math.round(price * 100),
-        payout_cents: Math.round(payout * 100),
-      });
+      await post('/api/admin/tiers', { app_id: appId, tier_name: tierName, tier_price_cents: Math.round(price * 100), payout_cents: Math.round(payout * 100) });
       load();
     } catch (err) { alert(err.message); }
   }
-
   async function approveConversion(id) {
     try { await post('/api/admin/conversions', { conversion_id: id }); load(); }
     catch (err) { alert(err.message); }
   }
 
-  if (loading) return <div style={{ padding: 40, color: '#999' }}>Loading...</div>;
+  if (loading) return <AppShell active="admin"><div className="loading">Loading…</div></AppShell>;
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 20px', fontFamily: 'system-ui' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 32 }}>Admin Panel</h1>
+    <AppShell active="admin" email={user?.email} isAdmin>
+      <div className="topbar"><div className="greet"><h1>Admin</h1><p>Add apps, approve requests, set payouts, and approve conversions.</p></div></div>
 
-      {/* Add a partner app directly */}
-      <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Add App to Market</h2>
-      <form onSubmit={addApp} style={{ border: '1px solid #e5e5e5', borderRadius: 8, padding: 14, marginBottom: 32, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <input
-            placeholder="App name *"
-            value={newApp.name}
-            onChange={e => setNewApp({ ...newApp, name: e.target.value })}
-            required
-            style={{ flex: '1 1 220px', padding: 10, border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }}
-          />
-          <input
-            placeholder="Website URL *"
-            type="url"
-            value={newApp.website_url}
-            onChange={e => setNewApp({ ...newApp, website_url: e.target.value })}
-            required
-            style={{ flex: '1 1 220px', padding: 10, border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }}
-          />
+      {/* Add app */}
+      <div className="sec-title"><h2>Add an app to market</h2></div>
+      <section className="card" style={{ marginBottom: 8 }}>
+        <div className="card-b">
+          <form className="form" onSubmit={addApp}>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <input className="input" style={{ flex: '1 1 220px' }} placeholder="App name *" value={newApp.name} onChange={e => setNewApp({ ...newApp, name: e.target.value })} required />
+              <input className="input" style={{ flex: '1 1 220px' }} placeholder="Website URL *" type="url" value={newApp.website_url} onChange={e => setNewApp({ ...newApp, website_url: e.target.value })} required />
+            </div>
+            <textarea className="textarea" placeholder="Description (optional)" rows={2} value={newApp.description} onChange={e => setNewApp({ ...newApp, description: e.target.value })} />
+            <button type="submit" className="btn btn-primary" disabled={creating} style={{ alignSelf: 'flex-start' }}>{creating ? 'Adding…' : 'Add app'}</button>
+          </form>
         </div>
-        <textarea
-          placeholder="Description (optional)"
-          value={newApp.description}
-          onChange={e => setNewApp({ ...newApp, description: e.target.value })}
-          rows={2}
-          style={{ width: '100%', padding: 10, border: '1px solid #ddd', borderRadius: 6, fontFamily: 'inherit', fontSize: 13 }}
-        />
-        <button type="submit" disabled={creating} style={{ alignSelf: 'flex-start', background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.6 : 1 }}>
-          {creating ? 'Adding…' : 'Add App'}
-        </button>
-      </form>
+      </section>
 
-      {/* Pending app requests */}
-      <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Pending App Requests ({requests.length})</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 32 }}>
+      {/* Requests */}
+      <div className="sec-title"><h2>Pending app requests</h2><span className="eyebrow">{requests.length}</span></div>
+      <div className="stack">
         {requests.map(r => (
-          <div key={r.id} style={{ border: '1px solid #e5e5e5', borderRadius: 8, padding: 14 }}>
-            <div style={{ fontWeight: 700 }}>{r.app_name}</div>
-            <div style={{ fontSize: 12, color: '#666' }}>{r.website_url} — {r.contact_email}</div>
-            <p style={{ fontSize: 12, color: '#999', marginTop: 6 }}>{r.description}</p>
-            <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-              <button onClick={() => approveRequest(r)} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>Approve</button>
-              <button onClick={() => rejectRequest(r.id)} style={{ background: '#fff', color: '#dc2626', border: '1px solid #dc2626', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>Reject</button>
+          <section className="card" key={r.id}>
+            <div className="card-b">
+              <div style={{ fontWeight: 700 }}>{r.app_name}</div>
+              <div className="muted" style={{ fontSize: 12 }}>{r.website_url} — {r.contact_email}</div>
+              {r.description && <p className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>{r.description}</p>}
+              <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                <button onClick={() => approveRequest(r)} className="btn btn-primary btn-sm">Approve</button>
+                <button onClick={() => rejectRequest(r.id)} className="btn btn-danger btn-sm">Reject</button>
+              </div>
             </div>
-          </div>
+          </section>
         ))}
-        {!requests.length && <div style={{ color: '#999', fontSize: 13 }}>No pending requests.</div>}
+        {!requests.length && <section className="card"><div className="card-b"><div className="empty">No pending requests.</div></div></section>}
       </div>
 
-      {/* Approved apps + tiers */}
-      <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Partner Apps</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 32 }}>
+      {/* Apps */}
+      <div className="sec-title"><h2>Partner apps</h2></div>
+      <div className="stack">
         {apps.map(a => (
-          <div key={a.id} style={{ border: '1px solid #e5e5e5', borderRadius: 8, padding: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <div style={{ fontWeight: 700 }}>{a.name} <span style={{ fontSize: 11, color: '#999' }}>({a.status})</span></div>
-              <button onClick={() => addTier(a.id)} style={{ fontSize: 12, color: '#111', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}>+ Add Tier</button>
+          <section className="card" key={a.id}>
+            <div className="card-b">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                <div style={{ fontWeight: 700 }}>{a.name}{' '}
+                  <span className={`pill ${a.status === 'approved' ? 'pill-good' : 'pill-warn'}`} style={{ marginLeft: 4 }}>{a.status}</span>
+                </div>
+                <button onClick={() => addTier(a.id)} className="linklike">+ Add tier</button>
+              </div>
+              <div className="num" style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 6 }}>API Key: {a.api_key}</div>
+              <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {(a.app_tiers || []).map(t => (
+                  <span key={t.id} className="pill" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)', border: '1px solid var(--line)', textTransform: 'none' }}>
+                    <span style={{ textTransform: 'capitalize' }}>{t.tier_name}</span>: pay {money(t.payout_cents)}
+                  </span>
+                ))}
+                {!(a.app_tiers || []).length && <span className="empty" style={{ padding: 0 }}>No tiers yet.</span>}
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: '#999', fontFamily: 'monospace', marginTop: 4 }}>API Key: {a.api_key}</div>
-            <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {(a.app_tiers || []).map(t => (
-                <span key={t.id} style={{ fontSize: 11, background: '#f3f3f3', padding: '4px 10px', borderRadius: 12 }}>
-                  {t.tier_name}: pay ${(t.payout_cents/100).toFixed(2)}
-                </span>
-              ))}
-            </div>
-          </div>
+          </section>
         ))}
-        {!apps.length && <div style={{ color: '#999', fontSize: 13 }}>No apps yet. Add one above.</div>}
+        {!apps.length && <section className="card"><div className="card-b"><div className="empty">No apps yet. Add one above.</div></div></section>}
       </div>
 
-      {/* Pending conversions to approve */}
-      <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Pending Conversions to Approve ({conversions.length})</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Conversions */}
+      <div className="sec-title"><h2>Pending conversions</h2><span className="eyebrow">{conversions.length}</span></div>
+      <div className="stack">
         {conversions.map(c => (
-          <div key={c.id} style={{ border: '1px solid #e5e5e5', borderRadius: 8, padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 700 }}>{c.partner_apps?.name} — {c.promo_codes?.code}</div>
-              <div style={{ fontSize: 12, color: '#666' }}>Affiliate: {c.promo_codes?.profiles?.email} — Owes ${(c.payout_owed_cents/100).toFixed(2)}</div>
+          <section className="card" key={c.id}>
+            <div className="card-b" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 700 }}>{c.partner_apps?.name} — <span className="num">{c.promo_codes?.code}</span></div>
+                <div className="muted" style={{ fontSize: 12 }}>Marketer: {c.promo_codes?.profiles?.email} — owes {money(c.payout_owed_cents)}</div>
+              </div>
+              <button onClick={() => approveConversion(c.id)} className="btn btn-primary btn-sm">Approve</button>
             </div>
-            <button onClick={() => approveConversion(c.id)} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>Approve</button>
-          </div>
+          </section>
         ))}
-        {!conversions.length && <div style={{ color: '#999', fontSize: 13 }}>Nothing pending.</div>}
+        {!conversions.length && <section className="card"><div className="card-b"><div className="empty">Nothing pending.</div></div></section>}
       </div>
-    </div>
+    </AppShell>
   );
 }
