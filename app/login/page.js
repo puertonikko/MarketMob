@@ -18,7 +18,14 @@ export default function LoginPage() {
       if (error) { setError(error.message); return; }
       window.location.href = '/dashboard';
     } else {
-      const { error } = await sb.auth.signUp({ email, password });
+      // Pin the confirmation-email redirect to THIS site's dashboard so it
+      // never falls back to the Supabase Site URL (which defaults to
+      // localhost). The origin must be in Supabase → Auth → Redirect URLs.
+      const { error } = await sb.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+      });
       if (error) { setError(error.message); return; }
       // Profile row is created automatically by the on_auth_user_created trigger.
       setInfo('Check your email to confirm your account, then sign in.');
